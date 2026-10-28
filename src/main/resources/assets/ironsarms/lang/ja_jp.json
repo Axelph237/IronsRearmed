@@ -6,7 +6,7 @@
   "tooltip.ironsarms.irons_mode.on": "IronsMode: 有効",
   "tooltip.ironsarms.mana": "マナ: %s / %s",
   "tooltip.ironsarms.mana_cost": "マナコスト: %s",
-  "enchantment.ironsarms.conductive": "魔力伝導",
+  "enchantment.ironsarms.conductive": "魔弾",
   "enchantment.ironsarms.conductive.desc": "魔法の金床で巻物の呪文を銃に付与できるようになる。",
   "enchantment.ironsarms.mana_draw": "マナ吸引",
   "enchantment.ironsarms.mana_draw.desc": "呪文を付与した銃にプレイヤーのマナを蓄え、呪文の発動に使えるようになる。レベルが高いほど多く蓄え、変換時のロスが少ない。"

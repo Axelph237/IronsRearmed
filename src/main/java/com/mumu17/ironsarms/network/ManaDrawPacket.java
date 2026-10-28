@@ -23,7 +23,7 @@ public class ManaDrawPacket {
         ItemStack gun = player.getMainHandItem();
         if (GunMana.inscribedSpell(gun).isEmpty() || GunMana.manaDrawLevel(gun) <= 0) return;
         if (GunMana.charge(player, gun) > 0) {
-            player.level().playSound(null, player.getX(), player.getY(), player.getZ(), SoundEvents.RESPAWN_ANCHOR_CHARGE, SoundSource.PLAYERS, 1.0F, 1.0F);
+            player.level().playSound(null, player.getX(), player.getY(), player.getZ(), SoundEvents.BOTTLE_FILL_DRAGONBREATH, SoundSource.PLAYERS, 1.0F, 1.0F);
         }
     }
 }

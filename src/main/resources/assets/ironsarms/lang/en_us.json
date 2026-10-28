@@ -6,7 +6,7 @@
   "tooltip.ironsarms.irons_mode.on": "IronsMode: ON",
   "tooltip.ironsarms.mana": "Mana: %s / %s",
   "tooltip.ironsarms.mana_cost": "Mana Cost: %s",
-  "enchantment.ironsarms.conductive": "Conductive",
+  "enchantment.ironsarms.conductive": "Imbued Bullets",
   "enchantment.ironsarms.conductive.desc": "Lets a gun take a spell from a scroll in the Arcane Anvil.",
   "enchantment.ironsarms.mana_draw": "Mana Draw",
   "enchantment.ironsarms.mana_draw.desc": "Lets an imbued gun store mana from your mana bar and pay for spell shots from it. Higher levels store more and waste less."
