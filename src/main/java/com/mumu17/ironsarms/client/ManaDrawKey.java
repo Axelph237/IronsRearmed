@@ -25,12 +25,16 @@ public class ManaDrawKey {
 
     @Mod.EventBusSubscriber(modid = IronsArms.MODID, value = Dist.CLIENT)
     public static class Presses {
+        private static boolean wasDown = false;
+
         @SubscribeEvent
         public static void onClientTick(TickEvent.ClientTickEvent event) {
             if (event.phase != TickEvent.Phase.END) return;
-            while (KEY.consumeClick()) {
-                ModNetworking.INSTANCE.sendToServer(new ManaDrawPacket());
-            }
+            boolean clicked = false;
+            while (KEY.consumeClick()) clicked = true;
+            // Held keys send OS key-repeat events, which Minecraft counts as clicks; only a fresh press charges.
+            if (clicked && !wasDown) ModNetworking.INSTANCE.sendToServer(new ManaDrawPacket());
+            wasDown = KEY.isDown();
         }
     }
 }
