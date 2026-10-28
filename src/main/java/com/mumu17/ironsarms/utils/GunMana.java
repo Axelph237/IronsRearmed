@@ -1,6 +1,7 @@
 package com.mumu17.ironsarms.utils;
 
 import com.mumu17.ironsarms.IronsArms;
+import com.mumu17.ironsarms.config.ManaDrawConfig;
 import com.mumu17.ironsarms.registry.ModEnchantments;
 import io.redspace.ironsspellbooks.api.magic.MagicData;
 import io.redspace.ironsspellbooks.api.registry.SpellRegistry;
@@ -54,5 +55,19 @@ public class GunMana {
         if (manaDrawLevel(gun) <= 0 || stored(gun) < cost) return false;
         setStored(gun, stored(gun) - cost);
         return true;
+    }
+
+    public static int charge(ServerPlayer player, ItemStack gun) {
+        ManaDrawConfig.ManaDrawTier tier = ManaDrawConfig.tier(manaDrawLevel(gun));
+        int room = tier.cap() - stored(gun);
+        if (room <= 0) return 0;
+        MagicData magicData = MagicData.getPlayerMagicData(player);
+        int playerSpend = Math.min((int) magicData.getMana(), (int) Math.ceil(room / tier.efficiency()));
+        int gained = Math.min(room, (int) Math.floor(playerSpend * tier.efficiency()));
+        if (gained <= 0) return 0;
+        magicData.setMana(magicData.getMana() - playerSpend);
+        setStored(gun, stored(gun) + gained);
+        PacketDistributor.sendToPlayer(player, new SyncManaPacket(magicData));
+        return gained;
     }
 }

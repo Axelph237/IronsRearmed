@@ -1,7 +1,9 @@
 package com.mumu17.ironsarms;
 
 import com.mojang.logging.LogUtils;
+import com.mumu17.ironsarms.config.ManaDrawConfig;
 import com.mumu17.ironsarms.event.IronsArmsBulletEvents;
+import com.mumu17.ironsarms.network.ModNetworking;
 import com.mumu17.ironsarms.registry.ModEnchantments;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.item.crafting.RecipeSerializer;
@@ -12,6 +14,7 @@ import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.ModLoadingException;
 import net.minecraftforge.fml.ModLoadingStage;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -36,6 +39,8 @@ public class IronsArms {
         }
 
         ModEnchantments.ENCHANTMENTS.register(FMLJavaModLoadingContext.get().getModEventBus());
+        ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, ManaDrawConfig.SPEC);
         MinecraftForge.EVENT_BUS.register(IronsArmsBulletEvents.class);
+        ModNetworking.register();
     }
 }
