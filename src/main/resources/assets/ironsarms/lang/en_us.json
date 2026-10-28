@@ -6,5 +6,9 @@
   "tooltip.ironsarms.inscribed_title": "//--- Iron's Spells 'n Spellbooks  ---//",
   "tooltip.ironsarms.spell_name": "Spell",
   "tooltip.ironsarms.spell_level": "Level",
-  "tooltip.ironsarms.mana": "Mana"
+  "tooltip.ironsarms.mana": "Mana",
+  "enchantment.ironsarms.conductive": "Conductive",
+  "enchantment.ironsarms.conductive.desc": "Lets a gun take a spell from a scroll in the Arcane Anvil.",
+  "enchantment.ironsarms.mana_draw": "Mana Draw",
+  "enchantment.ironsarms.mana_draw.desc": "Lets an imbued gun store mana from your mana bar and pay for spell shots from it. Higher levels store more and waste less."
 }

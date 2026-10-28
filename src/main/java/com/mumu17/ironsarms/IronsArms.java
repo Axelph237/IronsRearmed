@@ -2,6 +2,7 @@ package com.mumu17.ironsarms;
 
 import com.mojang.logging.LogUtils;
 import com.mumu17.ironsarms.event.IronsArmsBulletEvents;
+import com.mumu17.ironsarms.registry.ModEnchantments;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.item.crafting.RecipeSerializer;
 import net.minecraftforge.common.MinecraftForge;
@@ -34,6 +35,7 @@ public class IronsArms {
             );
         }
 
+        ModEnchantments.ENCHANTMENTS.register(FMLJavaModLoadingContext.get().getModEventBus());
         MinecraftForge.EVENT_BUS.register(IronsArmsBulletEvents.class);
     }
 }

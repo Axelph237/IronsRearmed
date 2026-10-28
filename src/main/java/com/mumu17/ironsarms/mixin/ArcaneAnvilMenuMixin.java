@@ -1,5 +1,6 @@
 package com.mumu17.ironsarms.mixin;
 
+import com.mumu17.ironsarms.registry.ModEnchantments;
 import com.tacz.guns.api.item.IGun;
 import io.redspace.ironsspellbooks.api.spells.ISpellContainer;
 import io.redspace.ironsspellbooks.api.spells.SpellData;
@@ -30,7 +31,9 @@ public abstract class ArcaneAnvilMenuMixin extends ItemCombinerMenu {
         if (!this.resultSlots.getItem(0).isEmpty()) return;
 
         // TACZの銃と、魔法入りのアイテム（スクロール等）の組み合わせかチェック
-        if (baseStack.getItem() instanceof IGun && ISpellContainer.isSpellContainer(modifierStack)) {
+        if (baseStack.getItem() instanceof IGun
+                && baseStack.getEnchantmentLevel(ModEnchantments.CONDUCTIVE.get()) > 0
+                && ISpellContainer.isSpellContainer(modifierStack)) {
             var spellContainer = ISpellContainer.get(modifierStack);
             if (!spellContainer.isEmpty()) {
                 SpellData spellData = spellContainer.getSpellAtIndex(0);
