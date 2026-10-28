@@ -54,6 +54,7 @@ public class IronsArmsBulletEvents {
     private static final List<UUID> castingPlayers = new ArrayList<>(List.of());
 
     private static final double FALL_HEIGHT = 4.0;
+    private static final double STATIONARY_SPEED = 0.1;
     private static Skyfall skyfall = null;
 
     private record Impact(Vec3 hit, Vec3 aim, Vec3 approach) {
@@ -74,12 +75,17 @@ public class IronsArmsBulletEvents {
             Vec3 start = blocked.getType() == HitResult.Type.MISS ? top
                     : aim.add(approach.normalize().scale(Math.max(0, blocked.getLocation().distanceTo(aim) - 0.5)));
             Vec3 dir = start.equals(aim) ? approach.normalize().reverse() : aim.subtract(start).normalize();
-            return new Skyfall(caster, start, dir);
+            return new Skyfall(caster, aim, start, dir);
         }
     }
 
-    private record Skyfall(Player caster, Vec3 start, Vec3 dir) {
+    private record Skyfall(Player caster, Vec3 aim, Vec3 start, Vec3 dir) {
         void redirect(Projectile projectile) {
+            // Spells like firecracker spawn a stationary projectile that bursts where it stands; put it on the target instead.
+            if (projectile.getDeltaMovement().length() < STATIONARY_SPEED) {
+                projectile.setPos(aim.subtract(0, projectile.getBbHeight() / 2, 0));
+                return;
+            }
             projectile.setPos(start.subtract(0, projectile.getBbHeight() / 2, 0));
             if (projectile instanceof AbstractMagicProjectile magicProjectile) {
                 magicProjectile.shoot(dir);
