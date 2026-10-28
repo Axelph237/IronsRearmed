@@ -5,6 +5,7 @@ import com.mumu17.ironsarms.utils.GunMana;
 import com.tacz.guns.api.event.common.GunFireEvent;
 import com.tacz.guns.api.event.common.EntityHurtByGunEvent;
 import com.tacz.guns.api.event.server.AmmoHitBlockEvent;
+import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.entity.EntityKineticBullet;
 import io.redspace.ironsspellbooks.api.events.ModifySpellLevelEvent;
 import io.redspace.ironsspellbooks.api.events.SpellOnCastEvent;
@@ -268,8 +269,7 @@ public class IronsArmsBulletEvents {
             // setInitiatedCastSpellが解決できないため、initiateCast内で管理するか、
             // バージョンに応じて直接詠唱開始をシミュレート
             if (spell.getCastType() == CastType.CONTINUOUS) {
-                int duration = spell.getCastTime(level);
-                if (duration <= 0) duration = 20;
+                int duration = continuousDurationTicks(player.getMainHandItem(), spell, level);
                 magicData.initiateCast(spell, level, duration, CastSource.SWORD, spell.getSpellId());
                 executeSpell(spell, level, player, magicData);
             } else {
@@ -294,6 +294,14 @@ public class IronsArmsBulletEvents {
                 magicData.setAdditionalCastData(null);
             }
         }
+    }
+
+    private static int continuousDurationTicks(ItemStack gun, AbstractSpell spell, int level) {
+        if (gun.getItem() instanceof IGun iGun) {
+            return Math.max(1, Math.round(1200f / Math.max(1, iGun.getRPM(gun))));
+        }
+        int castTime = spell.getCastTime(level);
+        return castTime > 0 ? castTime : 20;
     }
 
     private static void updateRecastSystems(AbstractSpell spell, MagicData magicData) {
