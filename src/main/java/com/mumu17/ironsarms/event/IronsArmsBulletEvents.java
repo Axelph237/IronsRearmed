@@ -18,7 +18,6 @@ import io.redspace.ironsspellbooks.api.spells.ISpellContainer;
 import io.redspace.ironsspellbooks.api.spells.SpellData;
 import io.redspace.ironsspellbooks.capabilities.magic.RecastInstance;
 import io.redspace.ironsspellbooks.capabilities.magic.TargetEntityCastData;
-import io.redspace.ironsspellbooks.entity.spells.AbstractMagicProjectile;
 import io.redspace.ironsspellbooks.spells.ender.StarfallSpell;
 import io.redspace.ironsspellbooks.spells.ender.TeleportSpell;
 import net.minecraft.nbt.CompoundTag;
@@ -56,7 +55,9 @@ public class IronsArmsBulletEvents {
 
     private static final double FALL_HEIGHT = 4.0;
     private static final double STATIONARY_SPEED = 0.1;
-    private static Skyfall skyfall = null;
+    private static final double CASTER_ANCHOR_RADIUS = 1.5;
+    private static final double[] FORMATION_SCALES = {1.0, 0.5};
+    private static Volley volley = null;
 
     private record Impact(Vec3 hit, Vec3 aim, Vec3 approach) {
         static Impact onEntity(LivingEntity target) {
@@ -81,28 +82,79 @@ public class IronsArmsBulletEvents {
     }
 
     private record Skyfall(Player caster, Vec3 aim, Vec3 start, Vec3 dir) {
-        void redirect(Projectile projectile) {
-            // Spells like firecracker spawn a stationary projectile that bursts where it stands; put it on the target instead.
-            if (projectile.getDeltaMovement().length() < STATIONARY_SPEED) {
-                projectile.setPos(aim.subtract(0, projectile.getBbHeight() / 2, 0));
-                return;
-            }
-            projectile.setPos(start.subtract(0, projectile.getBbHeight() / 2, 0));
-            if (projectile instanceof AbstractMagicProjectile magicProjectile) {
-                magicProjectile.shoot(dir);
-            } else {
-                projectile.setDeltaMovement(dir.scale(projectile.getDeltaMovement().length()));
-            }
+        boolean isClear(Vec3 from, Vec3 to) {
+            return caster.level().clip(new ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, null)).getType() == HitResult.Type.MISS;
+        }
+
+        void placeOnAim(Projectile projectile) {
+            projectile.setPos(aim.subtract(0, projectile.getBbHeight() / 2, 0));
+        }
+
+        void place(Projectile projectile, Vec3 centre) {
+            projectile.setPos(centre.subtract(0, projectile.getBbHeight() / 2, 0));
+            Vec3 toAim = aim.subtract(centre);
+            Vec3 heading = toAim.lengthSqr() < 1.0E-6 ? dir : toAim.normalize();
+            projectile.setDeltaMovement(heading.scale(projectile.getDeltaMovement().length()));
             if (projectile instanceof AbstractHurtingProjectile hurting) {
                 double power = new Vec3(hurting.xPower, hurting.yPower, hurting.zPower).length();
-                hurting.xPower = dir.x * power;
-                hurting.yPower = dir.y * power;
-                hurting.zPower = dir.z * power;
+                hurting.xPower = heading.x * power;
+                hurting.yPower = heading.y * power;
+                hurting.zPower = heading.z * power;
             }
-            projectile.setYRot((float) (Mth.atan2(dir.x, dir.z) * Mth.RAD_TO_DEG));
-            projectile.setXRot((float) (Mth.atan2(dir.y, dir.horizontalDistance()) * Mth.RAD_TO_DEG));
+            projectile.setYRot((float) (Mth.atan2(heading.x, heading.z) * Mth.RAD_TO_DEG));
+            projectile.setXRot((float) (Mth.atan2(heading.y, heading.horizontalDistance()) * Mth.RAD_TO_DEG));
             projectile.yRotO = projectile.getYRot();
             projectile.xRotO = projectile.getXRot();
+        }
+    }
+
+    private record Volley(Skyfall skyfall, Vec3 castEye, Vec3 castLook, List<Projectile> projectiles) {
+        Volley(Skyfall skyfall) {
+            this(skyfall, skyfall.caster().getEyePosition(), skyfall.caster().getLookAngle(), new ArrayList<>());
+        }
+
+        void release() {
+            if (isCasterAnchored()) {
+                Rotation toFall = Rotation.between(castLook, skyfall.dir());
+                double scale = Arrays.stream(FORMATION_SCALES).filter(s -> fitsAt(toFall, s)).findFirst().orElse(0);
+                projectiles.forEach(projectile -> skyfall.place(projectile, formationCentre(projectile, toFall, scale)));
+            }
+            projectiles.forEach(projectile -> projectile.level().addFreshEntity(projectile));
+        }
+
+        private boolean isCasterAnchored() {
+            if (projectiles.isEmpty()) return false;
+            Vec3 centroid = projectiles.stream().map(Volley::centre).reduce(Vec3.ZERO, Vec3::add).scale(1.0 / projectiles.size());
+            return centroid.distanceTo(castEye) <= CASTER_ANCHOR_RADIUS;
+        }
+
+        private boolean fitsAt(Rotation toFall, double scale) {
+            return projectiles.stream().allMatch(projectile -> {
+                Vec3 centre = formationCentre(projectile, toFall, scale);
+                return skyfall.isClear(skyfall.start(), centre) && skyfall.isClear(centre, skyfall.aim());
+            });
+        }
+
+        private Vec3 formationCentre(Projectile projectile, Rotation toFall, double scale) {
+            return skyfall.start().add(toFall.apply(centre(projectile).subtract(castEye)).scale(scale));
+        }
+
+        private static Vec3 centre(Projectile projectile) {
+            return projectile.getBoundingBox().getCenter();
+        }
+    }
+
+    private record Rotation(Vec3 axis, double cos, double sin) {
+        static Rotation between(Vec3 from, Vec3 to) {
+            Vec3 cross = from.cross(to);
+            double sin = cross.length();
+            Vec3 axis = sin > 1.0E-6 ? cross.scale(1 / sin)
+                    : from.cross(Math.abs(from.y) < 0.9 ? new Vec3(0, 1, 0) : new Vec3(1, 0, 0)).normalize();
+            return new Rotation(axis, from.dot(to), sin);
+        }
+
+        Vec3 apply(Vec3 v) {
+            return v.scale(cos).add(axis.cross(v).scale(sin)).add(axis.scale(axis.dot(v) * (1 - cos)));
         }
     }
 
@@ -174,9 +226,15 @@ public class IronsArmsBulletEvents {
                     bullet.getPersistentData().put("MagicData", reservedData);
                 }
             }
-        } else if (skyfall != null && event.getEntity() instanceof Projectile projectile && projectile.getOwner() == skyfall.caster()) {
-            // Redirect before the spawn packet goes out, so clients see the fall from the first frame.
-            skyfall.redirect(projectile);
+        } else if (volley != null && event.getEntity() instanceof Projectile projectile && projectile.getOwner() == volley.skyfall().caster()) {
+            if (projectile.getDeltaMovement().length() >= STATIONARY_SPEED) {
+                // Cancelling keeps the spawn packet from going out, so clients first see the projectile where the volley places it.
+                event.setCanceled(true);
+                volley.projectiles().add(projectile);
+            } else {
+                // Not launched yet: the spell acts on it right after adding it (firecracker detonates it), so it has to join now.
+                volley.skyfall().placeOnAim(projectile);
+            }
         }
     }
 
@@ -275,11 +333,13 @@ public class IronsArmsBulletEvents {
                 magicData.initiateCast(spell, level, duration, CastSource.SWORD, spell.getSpellId());
                 executeSpell(spell, level, player, magicData);
             } else {
-                skyfall = impact.skyfallFor(player);
+                Volley cast = new Volley(impact.skyfallFor(player));
+                volley = cast;
                 try {
                     executeSpell(spell, level, player, magicData);
                 } finally {
-                    skyfall = null;
+                    volley = null;
+                    cast.release();
                 }
             }
 
