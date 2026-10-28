@@ -3,53 +3,42 @@ package com.mumu17.ironsarms.item;
 import com.mumu17.ironsarms.IronsArms;
 import com.mumu17.ironsarms.utils.GunMana;
 import com.tacz.guns.api.item.IGun;
-import io.redspace.ironsspellbooks.api.registry.SpellRegistry;
 import io.redspace.ironsspellbooks.api.spells.AbstractSpell;
+import io.redspace.ironsspellbooks.util.TooltipsUtils;
 import net.minecraft.ChatFormatting;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.event.entity.player.ItemTooltipEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
 import java.util.List;
 
-@Mod.EventBusSubscriber(modid = IronsArms.MODID)
+@Mod.EventBusSubscriber(modid = IronsArms.MODID, value = Dist.CLIENT)
 public class GunTooltipHandler {
 
     @SubscribeEvent
     public static void onItemTooltip(ItemTooltipEvent event) {
         ItemStack stack = event.getItemStack();
         if (!(stack.getItem() instanceof IGun)) return;
+        GunMana.inscribedSpell(stack).ifPresent(inscribed -> {
+            AbstractSpell spell = inscribed.spell();
+            Player player = event.getEntity();
+            List<Component> tooltip = event.getToolTip();
 
-        CompoundTag tag = stack.getTag();
-        if (tag != null && tag.contains("InscribedSpell")) {
-            CompoundTag spellTag = tag.getCompound("InscribedSpell");
-            String spellId = spellTag.getString("SpellID");
-            int level = spellTag.getInt("Level");
-
-            AbstractSpell spell = SpellRegistry.getSpell(spellId);
-            if (spell != null && spell != SpellRegistry.none()) {
-                List<Component> tooltip = event.getToolTip();
-
-                tooltip.add(Component.literal(""));
-
-                tooltip.add(Component.translatable("tooltip."+IronsArms.MODID+".inscribed_title")
-                        .withStyle(ChatFormatting.WHITE, ChatFormatting.BOLD));
-
-                tooltip.add(Component.translatable("tooltip."+IronsArms.MODID+".spell_name")
-                        .append(Component.literal(": "))
-                        .append(spell.getDisplayName(event.getEntity()).withStyle(ChatFormatting.GREEN)));
-
-                tooltip.add(Component.translatable("tooltip."+IronsArms.MODID+".spell_level")
-                        .append(Component.literal(": "))
-                        .append(Component.literal(String.valueOf(level)).withStyle(ChatFormatting.GOLD)));
-
-                tooltip.add(Component.translatable("tooltip."+IronsArms.MODID+".mana")
-                        .append(Component.literal(": "))
-                        .append(Component.literal(String.valueOf(GunMana.stored(stack))).withStyle(ChatFormatting.AQUA)));
+            tooltip.add(Component.translatable("tooltip." + IronsArms.MODID + ".imbued_spell").withStyle(ChatFormatting.GRAY));
+            tooltip.add(spell.getDisplayName(player).withStyle(spell.getSchoolType().getDisplayName().getStyle()));
+            if (player != null) {
+                spell.getUniqueInfo(inscribed.level(), player).forEach(line ->
+                        tooltip.add(line.withStyle(line.getStyle().applyTo(TooltipsUtils.getStyleFor(player, spell)))));
             }
-        }
+
+            int cost = spell.getManaCost(inscribed.level());
+            tooltip.add(GunMana.manaDrawLevel(stack) > 0
+                    ? Component.translatable("tooltip." + IronsArms.MODID + ".mana", GunMana.stored(stack), cost).withStyle(ChatFormatting.BLUE)
+                    : Component.translatable("tooltip." + IronsArms.MODID + ".mana_cost", cost).withStyle(ChatFormatting.BLUE));
+        });
     }
 }
