@@ -17,17 +17,24 @@ import io.redspace.ironsspellbooks.api.spells.ISpellContainer;
 import io.redspace.ironsspellbooks.api.spells.SpellData;
 import io.redspace.ironsspellbooks.capabilities.magic.RecastInstance;
 import io.redspace.ironsspellbooks.capabilities.magic.TargetEntityCastData;
+import io.redspace.ironsspellbooks.entity.spells.AbstractMagicProjectile;
 import io.redspace.ironsspellbooks.spells.ender.StarfallSpell;
 import io.redspace.ironsspellbooks.spells.ender.TeleportSpell;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.AbstractHurtingProjectile;
+import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
@@ -45,6 +52,52 @@ public class IronsArmsBulletEvents {
     private static Item ringItemInstance = null;
 
     private static final List<UUID> castingPlayers = new ArrayList<>(List.of());
+
+    private static final double FALL_HEIGHT = 4.0;
+    private static Skyfall skyfall = null;
+
+    private record Impact(Vec3 hit, Vec3 aim, Vec3 approach) {
+        static Impact onEntity(LivingEntity target) {
+            return new Impact(target.position(), target.getBoundingBox().getCenter(), new Vec3(0, FALL_HEIGHT, 0));
+        }
+
+        static Impact onBlock(BlockHitResult hitResult) {
+            Vec3 normal = Vec3.atLowerCornerOf(hitResult.getDirection().getNormal());
+            // The underside of a block cannot be reached from above, so approach it from below.
+            Vec3 approach = normal.y < 0 ? normal.scale(FALL_HEIGHT) : new Vec3(normal.x, FALL_HEIGHT, normal.z);
+            return new Impact(hitResult.getLocation(), hitResult.getLocation().add(normal.scale(0.05)), approach);
+        }
+
+        Skyfall skyfallFor(Player caster) {
+            Vec3 top = aim.add(approach);
+            BlockHitResult blocked = caster.level().clip(new ClipContext(aim, top, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, null));
+            Vec3 start = blocked.getType() == HitResult.Type.MISS ? top
+                    : aim.add(approach.normalize().scale(Math.max(0, blocked.getLocation().distanceTo(aim) - 0.5)));
+            Vec3 dir = start.equals(aim) ? approach.normalize().reverse() : aim.subtract(start).normalize();
+            return new Skyfall(caster, start, dir);
+        }
+    }
+
+    private record Skyfall(Player caster, Vec3 start, Vec3 dir) {
+        void redirect(Projectile projectile) {
+            projectile.setPos(start.subtract(0, projectile.getBbHeight() / 2, 0));
+            if (projectile instanceof AbstractMagicProjectile magicProjectile) {
+                magicProjectile.shoot(dir);
+            } else {
+                projectile.setDeltaMovement(dir.scale(projectile.getDeltaMovement().length()));
+            }
+            if (projectile instanceof AbstractHurtingProjectile hurting) {
+                double power = new Vec3(hurting.xPower, hurting.yPower, hurting.zPower).length();
+                hurting.xPower = dir.x * power;
+                hurting.yPower = dir.y * power;
+                hurting.zPower = dir.z * power;
+            }
+            projectile.setYRot((float) (Mth.atan2(dir.x, dir.z) * Mth.RAD_TO_DEG));
+            projectile.setXRot((float) (Mth.atan2(dir.y, dir.horizontalDistance()) * Mth.RAD_TO_DEG));
+            projectile.yRotO = projectile.getYRot();
+            projectile.xRotO = projectile.getXRot();
+        }
+    }
 
     @SubscribeEvent
     public static void onGunFire(GunFireEvent event) {
@@ -114,6 +167,9 @@ public class IronsArmsBulletEvents {
                     bullet.getPersistentData().put("MagicData", reservedData);
                 }
             }
+        } else if (skyfall != null && event.getEntity() instanceof Projectile projectile && projectile.getOwner() == skyfall.caster()) {
+            // Redirect before the spawn packet goes out, so clients see the fall from the first frame.
+            skyfall.redirect(projectile);
         }
     }
 
@@ -132,7 +188,7 @@ public class IronsArmsBulletEvents {
         castingPlayers.remove(player.getUUID());
 
         // getHitPos()を解決できないため、弾丸の現在位置を使用
-        processImpact(player, target, target.position(), event.getBullet());
+        processImpact(player, target, Impact.onEntity(target), event.getBullet());
     }
 
     @SubscribeEvent
@@ -141,7 +197,8 @@ public class IronsArmsBulletEvents {
         if (!castingPlayers.contains(player.getUUID())) return;
         castingPlayers.remove(player.getUUID());
 
-        Vec3 hitPos = event.getHitResult().getLocation();
+        Impact impact = Impact.onBlock(event.getHitResult());
+        Vec3 hitPos = impact.hit();
 
         ArmorStand dummy = new ArmorStand(EntityType.ARMOR_STAND, player.level());
         dummy.setPos(hitPos.x, hitPos.y, hitPos.z);
@@ -156,12 +213,12 @@ public class IronsArmsBulletEvents {
 
         player.level().addFreshEntity(dummy);
 
-        processImpact(player, dummy, hitPos, event.getAmmo());
+        processImpact(player, dummy, impact, event.getAmmo());
 
         dummy.discard();
     }
 
-    private static void processImpact(Player player, LivingEntity target, Vec3 hitPos, Entity bullet) {
+    private static void processImpact(Player player, LivingEntity target, Impact impact, Entity bullet) {
         if (player.level().isClientSide) return;
         if (!bullet.getPersistentData().contains("MagicData")) return;
         CompoundTag magicTag = bullet.getPersistentData().getCompound("MagicData");
@@ -174,9 +231,9 @@ public class IronsArmsBulletEvents {
         String path = spell.getSpellResource().getPath();
 
         if (path.contains("starfall")) {
-            magicData.setAdditionalCastData(new StarfallSpell.StarfallCastData(hitPos));
+            magicData.setAdditionalCastData(new StarfallSpell.StarfallCastData(impact.hit()));
         } else if (path.contains("teleport")) {
-            magicData.setAdditionalCastData(new TeleportSpell.TeleportData(hitPos));
+            magicData.setAdditionalCastData(new TeleportSpell.TeleportData(impact.hit()));
         } else if (target != null) {
             magicData.setAdditionalCastData(new TargetEntityCastData(target));
         }
@@ -195,7 +252,7 @@ public class IronsArmsBulletEvents {
             float pitch = (float)(-(Math.atan2(d1, d3) * (180D / Math.PI)));
 
             double offsetDistance = 2.2;
-            Vec3 pseudoSpawnPos = hitPos.subtract(bulletMotion.scale(offsetDistance));
+            Vec3 pseudoSpawnPos = impact.hit().subtract(bulletMotion.scale(offsetDistance));
 
             player.setPos(pseudoSpawnPos.x, pseudoSpawnPos.y, pseudoSpawnPos.z);
             player.setYRot(yaw);
@@ -208,9 +265,15 @@ public class IronsArmsBulletEvents {
                 int duration = spell.getCastTime(level);
                 if (duration <= 0) duration = 20;
                 magicData.initiateCast(spell, level, duration, CastSource.SWORD, spell.getSpellId());
+                executeSpell(spell, level, player, magicData);
+            } else {
+                skyfall = impact.skyfallFor(player);
+                try {
+                    executeSpell(spell, level, player, magicData);
+                } finally {
+                    skyfall = null;
+                }
             }
-
-            executeSpell(spell, level, player, magicData);
 
         } finally {
             player.setPos(originalPos.x, originalPos.y, originalPos.z);
