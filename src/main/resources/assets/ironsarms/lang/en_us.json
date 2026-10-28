@@ -1,6 +1,6 @@
 {
   "key.ironsarms.irons_mode": "Toggle Irons Spellbook mode",
-  "key.categories.ironsarms": "IronsArms",
+  "key.categories.ironsarms": "IronsRearmed",
   "key.ironsarms.mana_draw": "Store mana in held gun (Mana Draw)",
   "tooltip.ironsarms.irons_mode.off": "IronsMode: OFF",
   "tooltip.ironsarms.irons_mode.on": "IronsMode: ON",
