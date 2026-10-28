@@ -1,10 +1,13 @@
 {
   "key.ironsarms.irons_mode": "Toggle Irons Spellbook mode",
-  "key.categories.ironsarms": "IronsArms",
+  "key.categories.ironsarms": "IronsRearmed",
+  "key.ironsarms.mana_draw": "Store mana in held gun (Mana Draw)",
   "tooltip.ironsarms.irons_mode.off": "IronsMode: OFF",
   "tooltip.ironsarms.irons_mode.on": "IronsMode: ON",
-  "tooltip.ironsarms.inscribed_title": "//--- Iron's Spells 'n Spellbooks  ---//",
-  "tooltip.ironsarms.spell_name": "Spell",
-  "tooltip.ironsarms.spell_level": "Level",
-  "tooltip.ironsarms.mana": "Mana"
+  "tooltip.ironsarms.mana": "Mana: %s / %s",
+  "tooltip.ironsarms.mana_cost": "Mana Cost: %s",
+  "enchantment.ironsarms.conductive": "Imbued Bullets",
+  "enchantment.ironsarms.conductive.desc": "Lets a gun take a spell from a scroll in the Arcane Anvil.",
+  "enchantment.ironsarms.mana_draw": "Mana Draw",
+  "enchantment.ironsarms.mana_draw.desc": "Lets an imbued gun store mana from your mana bar and pay for spell shots from it. Higher levels store more and waste less."
 }

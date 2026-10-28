@@ -1,14 +1,15 @@
 package com.mumu17.ironsarms.event;
 
 import com.mumu17.ironsarms.IronsArms;
-import com.mumu17.ironsarms.utils.GunTags;
+import com.mumu17.ironsarms.utils.GunMana;
 import com.tacz.guns.api.event.common.GunFireEvent;
 import com.tacz.guns.api.event.common.EntityHurtByGunEvent;
 import com.tacz.guns.api.event.server.AmmoHitBlockEvent;
+import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.entity.EntityKineticBullet;
 import io.redspace.ironsspellbooks.api.events.ModifySpellLevelEvent;
+import io.redspace.ironsspellbooks.api.events.SpellOnCastEvent;
 import io.redspace.ironsspellbooks.api.magic.MagicData;
-import io.redspace.ironsspellbooks.api.registry.AttributeRegistry;
 import io.redspace.ironsspellbooks.api.registry.SpellRegistry;
 import io.redspace.ironsspellbooks.api.spells.AbstractSpell;
 import io.redspace.ironsspellbooks.api.spells.CastSource;
@@ -17,18 +18,24 @@ import io.redspace.ironsspellbooks.api.spells.ISpellContainer;
 import io.redspace.ironsspellbooks.api.spells.SpellData;
 import io.redspace.ironsspellbooks.capabilities.magic.RecastInstance;
 import io.redspace.ironsspellbooks.capabilities.magic.TargetEntityCastData;
+import io.redspace.ironsspellbooks.entity.spells.AbstractMagicProjectile;
 import io.redspace.ironsspellbooks.spells.ender.StarfallSpell;
 import io.redspace.ironsspellbooks.spells.ender.TeleportSpell;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.AbstractHurtingProjectile;
+import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
@@ -45,24 +52,74 @@ public class IronsArmsBulletEvents {
     private static Boolean calamityRingExists = null;
     private static Item ringItemInstance = null;
 
-    private static final Map<UUID, Integer> playersWithCastingSpells = new HashMap<>(Map.of());
     private static final List<UUID> castingPlayers = new ArrayList<>(List.of());
+
+    private static final double FALL_HEIGHT = 4.0;
+    private static final double STATIONARY_SPEED = 0.1;
+    private static Skyfall skyfall = null;
+
+    private record Impact(Vec3 hit, Vec3 aim, Vec3 approach) {
+        static Impact onEntity(LivingEntity target) {
+            return new Impact(target.position(), target.getBoundingBox().getCenter(), new Vec3(0, FALL_HEIGHT, 0));
+        }
+
+        static Impact onBlock(BlockHitResult hitResult) {
+            Vec3 normal = Vec3.atLowerCornerOf(hitResult.getDirection().getNormal());
+            // The underside of a block cannot be reached from above, so approach it from below.
+            Vec3 approach = normal.y < 0 ? normal.scale(FALL_HEIGHT) : new Vec3(normal.x, FALL_HEIGHT, normal.z);
+            return new Impact(hitResult.getLocation(), hitResult.getLocation().add(normal.scale(0.05)), approach);
+        }
+
+        Skyfall skyfallFor(Player caster) {
+            Vec3 top = aim.add(approach);
+            BlockHitResult blocked = caster.level().clip(new ClipContext(aim, top, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, null));
+            Vec3 start = blocked.getType() == HitResult.Type.MISS ? top
+                    : aim.add(approach.normalize().scale(Math.max(0, blocked.getLocation().distanceTo(aim) - 0.5)));
+            Vec3 dir = start.equals(aim) ? approach.normalize().reverse() : aim.subtract(start).normalize();
+            return new Skyfall(caster, aim, start, dir);
+        }
+    }
+
+    private record Skyfall(Player caster, Vec3 aim, Vec3 start, Vec3 dir) {
+        void redirect(Projectile projectile) {
+            // Spells like firecracker spawn a stationary projectile that bursts where it stands; put it on the target instead.
+            if (projectile.getDeltaMovement().length() < STATIONARY_SPEED) {
+                projectile.setPos(aim.subtract(0, projectile.getBbHeight() / 2, 0));
+                return;
+            }
+            projectile.setPos(start.subtract(0, projectile.getBbHeight() / 2, 0));
+            if (projectile instanceof AbstractMagicProjectile magicProjectile) {
+                magicProjectile.shoot(dir);
+            } else {
+                projectile.setDeltaMovement(dir.scale(projectile.getDeltaMovement().length()));
+            }
+            if (projectile instanceof AbstractHurtingProjectile hurting) {
+                double power = new Vec3(hurting.xPower, hurting.yPower, hurting.zPower).length();
+                hurting.xPower = dir.x * power;
+                hurting.yPower = dir.y * power;
+                hurting.zPower = dir.z * power;
+            }
+            projectile.setYRot((float) (Mth.atan2(dir.x, dir.z) * Mth.RAD_TO_DEG));
+            projectile.setXRot((float) (Mth.atan2(dir.y, dir.horizontalDistance()) * Mth.RAD_TO_DEG));
+            projectile.yRotO = projectile.getYRot();
+            projectile.xRotO = projectile.getXRot();
+        }
+    }
 
     @SubscribeEvent
     public static void onGunFire(GunFireEvent event) {
         if (event.getLogicalSide().isClient()) return;
-        if (!(event.getShooter() instanceof Player player)) return;
+        if (!(event.getShooter() instanceof ServerPlayer player)) return;
 
         ItemStack gunStack = event.getGunItemStack();
-        CompoundTag rootTag = gunStack.getTag();
+        Optional<GunMana.InscribedSpell> inscribedSpell = GunMana.inscribedSpell(gunStack);
 
         AbstractSpell spell = null;
         int level = 1;
 
-        if (rootTag != null && rootTag.contains("InscribedSpell")) {
-            CompoundTag inscribedSpell = rootTag.getCompound("InscribedSpell");
-            spell = SpellRegistry.getSpell(inscribedSpell.getString("SpellID"));
-            level = inscribedSpell.getInt("Level");
+        if (inscribedSpell.isPresent()) {
+            spell = inscribedSpell.get().spell();
+            level = inscribedSpell.get().level();
         } else if (ISpellContainer.isSpellContainer(gunStack)) {
             ISpellContainer container = ISpellContainer.get(gunStack);
             if (!container.isEmpty()) {
@@ -84,11 +141,7 @@ public class IronsArmsBulletEvents {
         boolean hasCalamityRing = checkForCalamityRing(player);
 
         if (!player.isCreative() && !hasCalamityRing && !isRecasting) {
-            float manaCost = spell.getManaCost(level);
-            if (GunTags.getMana(gunStack) < manaCost) {
-                return;
-            }
-            GunTags.addMana(gunStack, (int) -manaCost);
+            if (!GunMana.pay(player, gunStack, spell.getManaCost(level))) return;
         }
 
         CompoundTag dataToPass = new CompoundTag();
@@ -96,6 +149,18 @@ public class IronsArmsBulletEvents {
         dataToPass.putInt("Level", level);
         pendingSpells.put(player.getUUID(), dataToPass);
         castingPlayers.add(player.getUUID());
+    }
+
+    @SubscribeEvent
+    public static void onSpellCast(SpellOnCastEvent event) {
+        if (event.getCastSource() != CastSource.SWORD || !event.getCastSource().consumesMana() || event.getEntity().isCreative()) return;
+        ItemStack gun = event.getEntity().getMainHandItem();
+        boolean gunCastsThisSpell = GunMana.inscribedSpell(gun)
+                .filter(inscribed -> inscribed.spell().getSpellId().equals(event.getSpellId()))
+                .isPresent();
+        if (gunCastsThisSpell && GunMana.payFromGun(gun, event.getManaCost())) {
+            event.setManaCost(0);
+        }
     }
 
     @SubscribeEvent
@@ -109,6 +174,9 @@ public class IronsArmsBulletEvents {
                     bullet.getPersistentData().put("MagicData", reservedData);
                 }
             }
+        } else if (skyfall != null && event.getEntity() instanceof Projectile projectile && projectile.getOwner() == skyfall.caster()) {
+            // Redirect before the spawn packet goes out, so clients see the fall from the first frame.
+            skyfall.redirect(projectile);
         }
     }
 
@@ -116,16 +184,6 @@ public class IronsArmsBulletEvents {
     public static void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase == TickEvent.Phase.END) {
             pendingSpells.clear();
-            playersWithCastingSpells.forEach((key, value) -> {
-                if (value > 0) {
-                    event.getServer().getAllLevels().forEach(level -> {
-                        if (level.getEntity(key) instanceof ServerPlayer player) {
-                            setManaFromGun(player, player.getMainHandItem());
-                        }
-                    });
-                    playersWithCastingSpells.put(key, value - 1);
-                }
-            });
         }
     }
 
@@ -137,7 +195,7 @@ public class IronsArmsBulletEvents {
         castingPlayers.remove(player.getUUID());
 
         // getHitPos()を解決できないため、弾丸の現在位置を使用
-        processImpact(player, target, target.position(), event.getBullet());
+        processImpact(player, target, Impact.onEntity(target), event.getBullet());
     }
 
     @SubscribeEvent
@@ -146,7 +204,8 @@ public class IronsArmsBulletEvents {
         if (!castingPlayers.contains(player.getUUID())) return;
         castingPlayers.remove(player.getUUID());
 
-        Vec3 hitPos = event.getHitResult().getLocation();
+        Impact impact = Impact.onBlock(event.getHitResult());
+        Vec3 hitPos = impact.hit();
 
         ArmorStand dummy = new ArmorStand(EntityType.ARMOR_STAND, player.level());
         dummy.setPos(hitPos.x, hitPos.y, hitPos.z);
@@ -161,12 +220,12 @@ public class IronsArmsBulletEvents {
 
         player.level().addFreshEntity(dummy);
 
-        processImpact(player, dummy, hitPos, event.getAmmo());
+        processImpact(player, dummy, impact, event.getAmmo());
 
         dummy.discard();
     }
 
-    private static void processImpact(Player player, LivingEntity target, Vec3 hitPos, Entity bullet) {
+    private static void processImpact(Player player, LivingEntity target, Impact impact, Entity bullet) {
         if (player.level().isClientSide) return;
         if (!bullet.getPersistentData().contains("MagicData")) return;
         CompoundTag magicTag = bullet.getPersistentData().getCompound("MagicData");
@@ -177,12 +236,14 @@ public class IronsArmsBulletEvents {
 
         MagicData magicData = MagicData.getPlayerMagicData(player);
         String path = spell.getSpellResource().getPath();
+        // A hit during the same continuous cast extends it; replacing the cast data would orphan the breath cone it holds.
+        boolean continuesCast = spell.getCastType() == CastType.CONTINUOUS && magicData.isCasting() && spell.getSpellId().equals(magicData.getCastingSpellId());
 
         if (path.contains("starfall")) {
-            magicData.setAdditionalCastData(new StarfallSpell.StarfallCastData(hitPos));
+            magicData.setAdditionalCastData(new StarfallSpell.StarfallCastData(impact.hit()));
         } else if (path.contains("teleport")) {
-            magicData.setAdditionalCastData(new TeleportSpell.TeleportData(hitPos));
-        } else if (target != null) {
+            magicData.setAdditionalCastData(new TeleportSpell.TeleportData(impact.hit()));
+        } else if (target != null && !continuesCast) {
             magicData.setAdditionalCastData(new TargetEntityCastData(target));
         }
 
@@ -200,7 +261,7 @@ public class IronsArmsBulletEvents {
             float pitch = (float)(-(Math.atan2(d1, d3) * (180D / Math.PI)));
 
             double offsetDistance = 2.2;
-            Vec3 pseudoSpawnPos = hitPos.subtract(bulletMotion.scale(offsetDistance));
+            Vec3 pseudoSpawnPos = impact.hit().subtract(bulletMotion.scale(offsetDistance));
 
             player.setPos(pseudoSpawnPos.x, pseudoSpawnPos.y, pseudoSpawnPos.z);
             player.setYRot(yaw);
@@ -210,14 +271,17 @@ public class IronsArmsBulletEvents {
             // setInitiatedCastSpellが解決できないため、initiateCast内で管理するか、
             // バージョンに応じて直接詠唱開始をシミュレート
             if (spell.getCastType() == CastType.CONTINUOUS) {
-                int duration = spell.getCastTime(level);
-                if (duration <= 0) duration = 20;
-                playersWithCastingSpells.put(player.getUUID(), duration);
-                setManaFromGun(player, player.getMainHandItem());
+                int duration = continuousDurationTicks(player.getMainHandItem(), spell, level);
                 magicData.initiateCast(spell, level, duration, CastSource.SWORD, spell.getSpellId());
+                executeSpell(spell, level, player, magicData);
+            } else {
+                skyfall = impact.skyfallFor(player);
+                try {
+                    executeSpell(spell, level, player, magicData);
+                } finally {
+                    skyfall = null;
+                }
             }
-
-            executeSpell(spell, level, player, magicData);
 
         } finally {
             player.setPos(originalPos.x, originalPos.y, originalPos.z);
@@ -232,6 +296,14 @@ public class IronsArmsBulletEvents {
                 magicData.setAdditionalCastData(null);
             }
         }
+    }
+
+    private static int continuousDurationTicks(ItemStack gun, AbstractSpell spell, int level) {
+        if (gun.getItem() instanceof IGun iGun) {
+            return Math.max(1, Math.round(1200f / Math.max(1, iGun.getRPM(gun))));
+        }
+        int castTime = spell.getCastTime(level);
+        return castTime > 0 ? castTime : 20;
     }
 
     private static void updateRecastSystems(AbstractSpell spell, MagicData magicData) {
@@ -291,13 +363,5 @@ public class IronsArmsBulletEvents {
                 calamityRingExists = true;
             }
         } catch (Exception e) { calamityRingExists = false; }
-    }
-
-    private static void setManaFromGun(Player player, ItemStack gunStack) {
-        MagicData magicData = MagicData.getPlayerMagicData(player);
-        float maxMana = (float) player.getAttributeValue((Attribute)AttributeRegistry.MAX_MANA.get());
-        float addedMana = maxMana - magicData.getMana();
-        magicData.addMana(addedMana);
-        GunTags.addMana(gunStack, (int) -addedMana);
     }
 }

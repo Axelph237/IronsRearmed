@@ -28,7 +28,7 @@ group = mod_group_id
 version = mod_version
 
 base {
-    archivesName = "IronsArms-${minecraft_version}"
+    archivesName = "IronsRearmed-${minecraft_version}"
 }
 
 java {
