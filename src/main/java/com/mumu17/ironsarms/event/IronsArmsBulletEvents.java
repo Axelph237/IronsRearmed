@@ -236,12 +236,14 @@ public class IronsArmsBulletEvents {
 
         MagicData magicData = MagicData.getPlayerMagicData(player);
         String path = spell.getSpellResource().getPath();
+        // A hit during the same continuous cast extends it; replacing the cast data would orphan the breath cone it holds.
+        boolean continuesCast = spell.getCastType() == CastType.CONTINUOUS && magicData.isCasting() && spell.getSpellId().equals(magicData.getCastingSpellId());
 
         if (path.contains("starfall")) {
             magicData.setAdditionalCastData(new StarfallSpell.StarfallCastData(impact.hit()));
         } else if (path.contains("teleport")) {
             magicData.setAdditionalCastData(new TeleportSpell.TeleportData(impact.hit()));
-        } else if (target != null) {
+        } else if (target != null && !continuesCast) {
             magicData.setAdditionalCastData(new TargetEntityCastData(target));
         }
 
