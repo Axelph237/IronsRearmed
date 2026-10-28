@@ -4,7 +4,6 @@
   "key.ironsarms.mana_draw": "手に持った銃にマナを蓄える（マナ吸引）",
   "tooltip.ironsarms.irons_mode.off": "IronsMode: 無効",
   "tooltip.ironsarms.irons_mode.on": "IronsMode: 有効",
-  "tooltip.ironsarms.imbued_spell": "付与された呪文:",
   "tooltip.ironsarms.mana": "マナ: %s / %s",
   "tooltip.ironsarms.mana_cost": "マナコスト: %s",
   "enchantment.ironsarms.conductive": "魔力伝導",
