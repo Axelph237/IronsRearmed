@@ -8,6 +8,7 @@
     "ArcaneAnvilMenuMixin"
   ],
   "client": [
+    "client.ManaBarOverlayMixin"
   ],
   "injectors": {
     "defaultRequire": 1
