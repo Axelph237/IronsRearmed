@@ -1,7 +1,7 @@
 package com.mumu17.ironsarms.item;
 
 import com.mumu17.ironsarms.IronsArms;
-import com.mumu17.ironsarms.utils.GunTags;
+import com.mumu17.ironsarms.utils.GunMana;
 import com.tacz.guns.api.item.IGun;
 import io.redspace.ironsspellbooks.api.registry.SpellRegistry;
 import io.redspace.ironsspellbooks.api.spells.AbstractSpell;
@@ -28,7 +28,6 @@ public class GunTooltipHandler {
             CompoundTag spellTag = tag.getCompound("InscribedSpell");
             String spellId = spellTag.getString("SpellID");
             int level = spellTag.getInt("Level");
-//            double percentage = Math.ceil((double) (GunTags.getMana(stack) / GunTags.MAX_MANA) * 1000d) / 10d;
 
             AbstractSpell spell = SpellRegistry.getSpell(spellId);
             if (spell != null && spell != SpellRegistry.none()) {
@@ -49,7 +48,7 @@ public class GunTooltipHandler {
 
                 tooltip.add(Component.translatable("tooltip."+IronsArms.MODID+".mana")
                         .append(Component.literal(": "))
-                        .append(Component.literal(String.valueOf(GunTags.getMana(stack))).withStyle(ChatFormatting.AQUA)));
+                        .append(Component.literal(String.valueOf(GunMana.stored(stack))).withStyle(ChatFormatting.AQUA)));
             }
         }
     }

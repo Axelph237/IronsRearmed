@@ -1,14 +1,14 @@
 package com.mumu17.ironsarms.event;
 
 import com.mumu17.ironsarms.IronsArms;
-import com.mumu17.ironsarms.utils.GunTags;
+import com.mumu17.ironsarms.utils.GunMana;
 import com.tacz.guns.api.event.common.GunFireEvent;
 import com.tacz.guns.api.event.common.EntityHurtByGunEvent;
 import com.tacz.guns.api.event.server.AmmoHitBlockEvent;
 import com.tacz.guns.entity.EntityKineticBullet;
 import io.redspace.ironsspellbooks.api.events.ModifySpellLevelEvent;
+import io.redspace.ironsspellbooks.api.events.SpellOnCastEvent;
 import io.redspace.ironsspellbooks.api.magic.MagicData;
-import io.redspace.ironsspellbooks.api.registry.AttributeRegistry;
 import io.redspace.ironsspellbooks.api.registry.SpellRegistry;
 import io.redspace.ironsspellbooks.api.spells.AbstractSpell;
 import io.redspace.ironsspellbooks.api.spells.CastSource;
@@ -24,7 +24,6 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
@@ -45,24 +44,22 @@ public class IronsArmsBulletEvents {
     private static Boolean calamityRingExists = null;
     private static Item ringItemInstance = null;
 
-    private static final Map<UUID, Integer> playersWithCastingSpells = new HashMap<>(Map.of());
     private static final List<UUID> castingPlayers = new ArrayList<>(List.of());
 
     @SubscribeEvent
     public static void onGunFire(GunFireEvent event) {
         if (event.getLogicalSide().isClient()) return;
-        if (!(event.getShooter() instanceof Player player)) return;
+        if (!(event.getShooter() instanceof ServerPlayer player)) return;
 
         ItemStack gunStack = event.getGunItemStack();
-        CompoundTag rootTag = gunStack.getTag();
+        Optional<GunMana.InscribedSpell> inscribedSpell = GunMana.inscribedSpell(gunStack);
 
         AbstractSpell spell = null;
         int level = 1;
 
-        if (rootTag != null && rootTag.contains("InscribedSpell")) {
-            CompoundTag inscribedSpell = rootTag.getCompound("InscribedSpell");
-            spell = SpellRegistry.getSpell(inscribedSpell.getString("SpellID"));
-            level = inscribedSpell.getInt("Level");
+        if (inscribedSpell.isPresent()) {
+            spell = inscribedSpell.get().spell();
+            level = inscribedSpell.get().level();
         } else if (ISpellContainer.isSpellContainer(gunStack)) {
             ISpellContainer container = ISpellContainer.get(gunStack);
             if (!container.isEmpty()) {
@@ -84,11 +81,7 @@ public class IronsArmsBulletEvents {
         boolean hasCalamityRing = checkForCalamityRing(player);
 
         if (!player.isCreative() && !hasCalamityRing && !isRecasting) {
-            float manaCost = spell.getManaCost(level);
-            if (GunTags.getMana(gunStack) < manaCost) {
-                return;
-            }
-            GunTags.addMana(gunStack, (int) -manaCost);
+            if (!GunMana.pay(player, gunStack, spell.getManaCost(level))) return;
         }
 
         CompoundTag dataToPass = new CompoundTag();
@@ -96,6 +89,18 @@ public class IronsArmsBulletEvents {
         dataToPass.putInt("Level", level);
         pendingSpells.put(player.getUUID(), dataToPass);
         castingPlayers.add(player.getUUID());
+    }
+
+    @SubscribeEvent
+    public static void onSpellCast(SpellOnCastEvent event) {
+        if (event.getCastSource() != CastSource.SWORD || !event.getCastSource().consumesMana() || event.getEntity().isCreative()) return;
+        ItemStack gun = event.getEntity().getMainHandItem();
+        boolean gunCastsThisSpell = GunMana.inscribedSpell(gun)
+                .filter(inscribed -> inscribed.spell().getSpellId().equals(event.getSpellId()))
+                .isPresent();
+        if (gunCastsThisSpell && GunMana.payFromGun(gun, event.getManaCost())) {
+            event.setManaCost(0);
+        }
     }
 
     @SubscribeEvent
@@ -116,16 +121,6 @@ public class IronsArmsBulletEvents {
     public static void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase == TickEvent.Phase.END) {
             pendingSpells.clear();
-            playersWithCastingSpells.forEach((key, value) -> {
-                if (value > 0) {
-                    event.getServer().getAllLevels().forEach(level -> {
-                        if (level.getEntity(key) instanceof ServerPlayer player) {
-                            setManaFromGun(player, player.getMainHandItem());
-                        }
-                    });
-                    playersWithCastingSpells.put(key, value - 1);
-                }
-            });
         }
     }
 
@@ -212,8 +207,6 @@ public class IronsArmsBulletEvents {
             if (spell.getCastType() == CastType.CONTINUOUS) {
                 int duration = spell.getCastTime(level);
                 if (duration <= 0) duration = 20;
-                playersWithCastingSpells.put(player.getUUID(), duration);
-                setManaFromGun(player, player.getMainHandItem());
                 magicData.initiateCast(spell, level, duration, CastSource.SWORD, spell.getSpellId());
             }
 
@@ -291,13 +284,5 @@ public class IronsArmsBulletEvents {
                 calamityRingExists = true;
             }
         } catch (Exception e) { calamityRingExists = false; }
-    }
-
-    private static void setManaFromGun(Player player, ItemStack gunStack) {
-        MagicData magicData = MagicData.getPlayerMagicData(player);
-        float maxMana = (float) player.getAttributeValue((Attribute)AttributeRegistry.MAX_MANA.get());
-        float addedMana = maxMana - magicData.getMana();
-        magicData.addMana(addedMana);
-        GunTags.addMana(gunStack, (int) -addedMana);
     }
 }
