@@ -10,6 +10,7 @@ import com.tacz.guns.entity.EntityKineticBullet;
 import io.redspace.ironsspellbooks.api.events.ModifySpellLevelEvent;
 import io.redspace.ironsspellbooks.api.events.SpellOnCastEvent;
 import io.redspace.ironsspellbooks.api.magic.MagicData;
+import io.redspace.ironsspellbooks.api.magic.MagicHelper;
 import io.redspace.ironsspellbooks.api.registry.SpellRegistry;
 import io.redspace.ironsspellbooks.api.spells.AbstractSpell;
 import io.redspace.ironsspellbooks.api.spells.CastSource;
@@ -18,9 +19,13 @@ import io.redspace.ironsspellbooks.api.spells.ISpellContainer;
 import io.redspace.ironsspellbooks.api.spells.SpellData;
 import io.redspace.ironsspellbooks.capabilities.magic.RecastInstance;
 import io.redspace.ironsspellbooks.capabilities.magic.TargetEntityCastData;
+import io.redspace.ironsspellbooks.config.ServerConfigs;
 import io.redspace.ironsspellbooks.spells.ender.StarfallSpell;
 import io.redspace.ironsspellbooks.spells.ender.TeleportSpell;
+import net.minecraft.ChatFormatting;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundSetActionBarTextPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
@@ -187,6 +192,11 @@ public class IronsArmsBulletEvents {
         MinecraftForge.EVENT_BUS.post(levelEvent);
         level = levelEvent.getLevel();
 
+        if (isOnCooldown(player, spell)) {
+            player.connection.send(new ClientboundSetActionBarTextPacket(Component.translatable("ui.irons_spellbooks.cast_error_cooldown", spell.getDisplayName(player)).withStyle(ChatFormatting.RED)));
+            return;
+        }
+
         MagicData magicData = MagicData.getPlayerMagicData(player);
         String spellId = spell.getSpellResource().toString();
         boolean isRecasting = magicData.getPlayerRecasts().hasRecastForSpell(spellId);
@@ -291,8 +301,10 @@ public class IronsArmsBulletEvents {
         AbstractSpell spell = SpellRegistry.getSpell(magicTag.getString("SpellID"));
         int level = magicTag.getInt("Level");
         if (spell == null || spell == SpellRegistry.none()) return;
+        if (isOnCooldown(player, spell)) return;
 
         MagicData magicData = MagicData.getPlayerMagicData(player);
+        boolean isRecast = magicData.getPlayerRecasts().hasRecastForSpell(spell);
         String path = spell.getSpellResource().getPath();
         // A hit during the same continuous cast extends it; replacing the cast data would orphan the breath cone it holds.
         boolean continuesCast = spell.getCastType() == CastType.CONTINUOUS && magicData.isCasting() && spell.getSpellId().equals(magicData.getCastingSpellId());
@@ -341,6 +353,10 @@ public class IronsArmsBulletEvents {
                     volley = null;
                     cast.release();
                 }
+                // Iron's defers a recastable spell's cooldown (summons) until its recasts run out, but gun hits never spend recasts, so it starts here.
+                if (!isRecast && cooldownsApply(player) && player instanceof ServerPlayer serverPlayer) {
+                    MagicHelper.MAGIC_MANAGER.addCooldown(serverPlayer, spell, CastSource.SWORD);
+                }
             }
 
         } finally {
@@ -356,6 +372,14 @@ public class IronsArmsBulletEvents {
                 magicData.setAdditionalCastData(null);
             }
         }
+    }
+
+    private static boolean cooldownsApply(Player player) {
+        return !player.isCreative() || ServerConfigs.CREATIVE_COOLDOWN.get();
+    }
+
+    private static boolean isOnCooldown(Player player, AbstractSpell spell) {
+        return cooldownsApply(player) && MagicData.getPlayerMagicData(player).getPlayerCooldowns().isOnCooldown(spell);
     }
 
     private static int continuousDurationTicks(ItemStack gun, AbstractSpell spell, int level) {
