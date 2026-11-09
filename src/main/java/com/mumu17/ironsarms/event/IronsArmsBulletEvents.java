@@ -17,6 +17,7 @@ import io.redspace.ironsspellbooks.api.spells.CastSource;
 import io.redspace.ironsspellbooks.api.spells.CastType;
 import io.redspace.ironsspellbooks.api.spells.ISpellContainer;
 import io.redspace.ironsspellbooks.api.spells.SpellData;
+import io.redspace.ironsspellbooks.capabilities.magic.MagicManager;
 import io.redspace.ironsspellbooks.capabilities.magic.RecastInstance;
 import io.redspace.ironsspellbooks.capabilities.magic.TargetEntityCastData;
 import io.redspace.ironsspellbooks.config.ServerConfigs;
@@ -38,6 +39,7 @@ import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.entity.EntityTypeTest;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -196,6 +198,7 @@ public class IronsArmsBulletEvents {
             player.connection.send(new ClientboundSetActionBarTextPacket(Component.translatable("ui.irons_spellbooks.cast_error_cooldown", spell.getDisplayName(player)).withStyle(ChatFormatting.RED)));
             return;
         }
+        if (hasCooldownSpellInFlight(player, spell)) return;
 
         MagicData magicData = MagicData.getPlayerMagicData(player);
         String spellId = spell.getSpellResource().toString();
@@ -380,6 +383,12 @@ public class IronsArmsBulletEvents {
 
     private static boolean isOnCooldown(Player player, AbstractSpell spell) {
         return cooldownsApply(player) && MagicData.getPlayerMagicData(player).getPlayerCooldowns().isOnCooldown(spell);
+    }
+
+    private static boolean hasCooldownSpellInFlight(ServerPlayer player, AbstractSpell spell) {
+        if (!cooldownsApply(player) || MagicManager.getEffectiveSpellCooldown(spell, player, CastSource.SWORD) <= 0) return false;
+        return !player.serverLevel().getEntities(EntityTypeTest.forClass(EntityKineticBullet.class), bullet -> player.equals(bullet.getOwner())
+                && spell.getSpellId().equals(bullet.getPersistentData().getCompound("MagicData").getString("SpellID"))).isEmpty();
     }
 
     private static int continuousDurationTicks(ItemStack gun, AbstractSpell spell, int level) {
