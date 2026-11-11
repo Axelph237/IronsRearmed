@@ -1,11 +1,11 @@
 package com.mumu17.ironsarms.mixin;
 
+import com.mumu17.ironsarms.registry.ModDataComponents;
 import com.mumu17.ironsarms.registry.ModEnchantments;
 import com.tacz.guns.api.item.IGun;
 import io.redspace.ironsspellbooks.api.spells.ISpellContainer;
 import io.redspace.ironsspellbooks.api.spells.SpellData;
 import io.redspace.ironsspellbooks.gui.arcane_anvil.ArcaneAnvilMenu;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.inventory.ItemCombinerMenu;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.ItemStack;
@@ -32,21 +32,14 @@ public abstract class ArcaneAnvilMenuMixin extends ItemCombinerMenu {
 
         // TACZの銃と、魔法入りのアイテム（スクロール等）の組み合わせかチェック
         if (baseStack.getItem() instanceof IGun
-                && baseStack.getEnchantmentLevel(ModEnchantments.CONDUCTIVE.get()) > 0
+                && ModEnchantments.level(baseStack, ModEnchantments.CONDUCTIVE) > 0
                 && ISpellContainer.isSpellContainer(modifierStack)) {
             var spellContainer = ISpellContainer.get(modifierStack);
             if (!spellContainer.isEmpty()) {
                 SpellData spellData = spellContainer.getSpellAtIndex(0);
 
                 ItemStack result = baseStack.copy();
-                CompoundTag tag = result.getOrCreateTag();
-
-                CompoundTag spellTag = new CompoundTag();
-                spellTag.putString("SpellID", spellData.getSpell().getSpellId());
-                spellTag.putInt("Level", spellData.getLevel());
-
-                tag.put("InscribedSpell", spellTag);
-
+                result.set(ModDataComponents.INSCRIBED_SPELL, new SpellData(spellData.getSpell(), spellData.getLevel()));
                 // 結果スロット（index 2）にセット
                 this.resultSlots.setItem(0, result);
             }

@@ -5,22 +5,22 @@ import com.mumu17.ironsarms.registry.ModEnchantments;
 import com.mumu17.ironsarms.utils.GunMana;
 import com.tacz.guns.api.item.IGun;
 import io.redspace.ironsspellbooks.api.spells.AbstractSpell;
-import io.redspace.ironsspellbooks.api.spells.SpellData;
 import io.redspace.ironsspellbooks.util.TooltipsUtils;
 import net.minecraft.ChatFormatting;
+import net.minecraft.Util;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.event.entity.player.ItemTooltipEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
 
 import java.util.ArrayList;
 import java.util.List;
 
-@Mod.EventBusSubscriber(modid = IronsArms.MODID, value = Dist.CLIENT)
+@EventBusSubscriber(modid = IronsArms.MODID, value = Dist.CLIENT)
 public class GunTooltipHandler {
 
     @SubscribeEvent
@@ -28,20 +28,20 @@ public class GunTooltipHandler {
         ItemStack stack = event.getItemStack();
         if (!(stack.getItem() instanceof IGun)) return;
         GunMana.inscribedSpell(stack).ifPresent(inscribed -> {
-            AbstractSpell spell = inscribed.spell();
+            AbstractSpell spell = inscribed.getSpell();
             Player player = event.getEntity();
             List<Component> lines = new ArrayList<>();
 
             Component level = player != null
-                    ? TooltipsUtils.getLevelComponenet(new SpellData(spell, inscribed.level()), player)
-                    : Component.literal(String.valueOf(inscribed.level()));
+                    ? TooltipsUtils.getLevelComponenet(inscribed, player)
+                    : Component.literal(String.valueOf(inscribed.getLevel()));
             lines.add(indent(Component.translatable("tooltip.irons_spellbooks.selected_spell", spell.getDisplayName(player), level)
                     .withStyle(spell.getSchoolType().getDisplayName().getStyle())));
             if (player != null) {
-                spell.getUniqueInfo(inscribed.level(), player).forEach(line ->
+                spell.getUniqueInfo(inscribed.getLevel(), player).forEach(line ->
                         lines.add(indent(line.withStyle(line.getStyle().applyTo(TooltipsUtils.getStyleFor(player, spell))))));
             }
-            int cost = spell.getManaCost(inscribed.level());
+            int cost = spell.getManaCost(inscribed.getLevel());
             lines.add(indent(GunMana.manaDrawLevel(stack) > 0
                     ? Component.translatable("tooltip." + IronsArms.MODID + ".mana", GunMana.stored(stack), cost).withStyle(ChatFormatting.BLUE)
                     : Component.translatable("tooltip." + IronsArms.MODID + ".mana_cost", cost).withStyle(ChatFormatting.BLUE)));
@@ -52,7 +52,7 @@ public class GunTooltipHandler {
     }
 
     private static int indexAfterConductive(List<Component> tooltip) {
-        String conductiveKey = ModEnchantments.CONDUCTIVE.get().getDescriptionId();
+        String conductiveKey = Util.makeDescriptionId("enchantment", ModEnchantments.CONDUCTIVE.location());
         for (int i = 0; i < tooltip.size(); i++) {
             if (tooltip.get(i).getContents() instanceof TranslatableContents contents && contents.getKey().equals(conductiveKey)) {
                 return i + 1;

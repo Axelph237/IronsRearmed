@@ -2,45 +2,29 @@ package com.mumu17.ironsarms;
 
 import com.mojang.logging.LogUtils;
 import com.mumu17.ironsarms.config.ManaDrawConfig;
-import com.mumu17.ironsarms.event.IronsArmsBulletEvents;
-import com.mumu17.ironsarms.network.ModNetworking;
-import com.mumu17.ironsarms.registry.ModEnchantments;
-import net.minecraft.client.Minecraft;
-import net.minecraft.world.item.crafting.RecipeSerializer;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.eventbus.api.IEventBus;
-import net.minecraftforge.fml.ModList;
-import net.minecraftforge.fml.ModLoadingContext;
-import net.minecraftforge.fml.ModLoadingException;
-import net.minecraftforge.fml.ModLoadingStage;
-import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.config.ModConfig;
-import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
-import net.minecraftforge.registries.DeferredRegister;
-import net.minecraftforge.registries.ForgeRegistries;
+import com.mumu17.ironsarms.registry.ModDataComponents;
+import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.ModList;
+import net.neoforged.fml.ModLoadingException;
+import net.neoforged.fml.ModLoadingIssue;
+import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.config.ModConfig;
 import org.slf4j.Logger;
 
 @Mod(IronsArms.MODID)
 public class IronsArms {
-
     public static final String MODID = "ironsarms";
     public static final Logger LOGGER = LogUtils.getLogger();
 
-    public IronsArms() {
+    public IronsArms(IEventBus modBus, ModContainer container) {
         if (ModList.get().isLoaded("arscurios")
                 || ModList.get().isLoaded("armslib")
                 || ModList.get().isLoaded("castlib")) {
-            throw new ModLoadingException(
-                    ModLoadingContext.get().getActiveContainer().getModInfo(),
-                    ModLoadingStage.CONSTRUCT,
-                    "This mod is incompatible with §eArsCurios, ArmsLib and CastLib§r. Please remove them.",
-                    new Throwable()
-            );
+            throw new ModLoadingException(ModLoadingIssue.error(
+                    "This mod is incompatible with §eArsCurios, ArmsLib and CastLib§r. Please remove them."));
         }
-
-        ModEnchantments.ENCHANTMENTS.register(FMLJavaModLoadingContext.get().getModEventBus());
-        ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, ManaDrawConfig.SPEC);
-        MinecraftForge.EVENT_BUS.register(IronsArmsBulletEvents.class);
-        ModNetworking.register();
+        ModDataComponents.COMPONENTS.register(modBus);
+        container.registerConfig(ModConfig.Type.SERVER, ManaDrawConfig.SPEC);
     }
 }

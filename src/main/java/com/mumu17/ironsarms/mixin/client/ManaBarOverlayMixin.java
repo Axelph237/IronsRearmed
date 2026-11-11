@@ -12,11 +12,11 @@ import org.spongepowered.asm.mixin.injection.At;
 
 import java.util.function.Predicate;
 
-@Mixin(value = ManaBarOverlay.class, remap = false)
+@Mixin(ManaBarOverlay.class)
 public class ManaBarOverlayMixin {
-    @WrapOperation(method = "shouldShowManaBar", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/player/Player;isHolding(Ljava/util/function/Predicate;)Z", remap = true))
+    @WrapOperation(method = "shouldShowManaBar", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/player/Player;isHolding(Ljava/util/function/Predicate;)Z"))
     private static boolean ironsarms$showWhenHoldingManaGun(Player player, Predicate<ItemStack> isCastingItem, Operation<Boolean> original) {
         return original.call(player, isCastingItem)
-                || player.isHolding(stack -> stack.getEnchantmentLevel(ModEnchantments.CONDUCTIVE.get()) > 0 || GunMana.manaDrawLevel(stack) > 0);
+                || player.isHolding(stack -> ModEnchantments.level(stack, ModEnchantments.CONDUCTIVE) > 0 || GunMana.manaDrawLevel(stack) > 0);
     }
 }
