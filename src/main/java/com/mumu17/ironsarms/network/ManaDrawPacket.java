@@ -1,25 +1,28 @@
 package com.mumu17.ironsarms.network;
 
+import com.mumu17.ironsarms.IronsArms;
 import com.mumu17.ironsarms.utils.GunMana;
-import net.minecraft.network.FriendlyByteBuf;
+import io.netty.buffer.ByteBuf;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.network.NetworkEvent;
+import net.neoforged.neoforge.network.handling.IPayloadContext;
 
-import java.util.function.Supplier;
+public record ManaDrawPacket() implements CustomPacketPayload {
+    public static final Type<ManaDrawPacket> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(IronsArms.MODID, "mana_draw"));
+    public static final StreamCodec<ByteBuf, ManaDrawPacket> STREAM_CODEC = StreamCodec.unit(new ManaDrawPacket());
 
-public class ManaDrawPacket {
-    public ManaDrawPacket() {}
+    @Override
+    public Type<ManaDrawPacket> type() {
+        return TYPE;
+    }
 
-    public ManaDrawPacket(FriendlyByteBuf buf) {}
-
-    public void encode(FriendlyByteBuf buf) {}
-
-    public void handle(Supplier<NetworkEvent.Context> ctx) {
-        ServerPlayer player = ctx.get().getSender();
-        if (player == null) return;
+    public static void handle(ManaDrawPacket packet, IPayloadContext context) {
+        if (!(context.player() instanceof ServerPlayer player)) return;
         ItemStack gun = player.getMainHandItem();
         if (GunMana.inscribedSpell(gun).isEmpty() || GunMana.manaDrawLevel(gun) <= 0) return;
         if (GunMana.charge(player, gun) > 0) {

@@ -1,45 +1,34 @@
 package com.mumu17.ironsarms.utils;
 
-import com.mumu17.ironsarms.IronsArms;
 import com.mumu17.ironsarms.config.ManaDrawConfig;
+import com.mumu17.ironsarms.registry.ModDataComponents;
 import com.mumu17.ironsarms.registry.ModEnchantments;
 import io.redspace.ironsspellbooks.api.magic.MagicData;
 import io.redspace.ironsspellbooks.api.registry.SpellRegistry;
-import io.redspace.ironsspellbooks.api.spells.AbstractSpell;
+import io.redspace.ironsspellbooks.api.spells.SpellData;
 import io.redspace.ironsspellbooks.network.SyncManaPacket;
-import io.redspace.ironsspellbooks.setup.PacketDistributor;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.Optional;
 
 public class GunMana {
-    private static final String MANA = IronsArms.MODID + ":Mana";
-    private static final String INSCRIBED_SPELL = "InscribedSpell";
-
-    public record InscribedSpell(AbstractSpell spell, int level) {}
-
-    public static Optional<InscribedSpell> inscribedSpell(ItemStack gun) {
-        CompoundTag tag = gun.getTag();
-        if (tag == null || !tag.contains(INSCRIBED_SPELL)) return Optional.empty();
-        CompoundTag spellTag = tag.getCompound(INSCRIBED_SPELL);
-        AbstractSpell spell = SpellRegistry.getSpell(spellTag.getString("SpellID"));
-        if (spell == null || spell == SpellRegistry.none()) return Optional.empty();
-        return Optional.of(new InscribedSpell(spell, spellTag.getInt("Level")));
+    public static Optional<SpellData> inscribedSpell(ItemStack gun) {
+        return Optional.ofNullable(gun.get(ModDataComponents.INSCRIBED_SPELL))
+                .filter(spellData -> spellData.getSpell() != SpellRegistry.none());
     }
 
     public static int manaDrawLevel(ItemStack gun) {
-        return gun.getEnchantmentLevel(ModEnchantments.MANA_DRAW.get());
+        return ModEnchantments.level(gun, ModEnchantments.MANA_DRAW);
     }
 
     public static int stored(ItemStack gun) {
-        CompoundTag tag = gun.getTag();
-        return tag == null ? 0 : tag.getInt(MANA);
+        return gun.getOrDefault(ModDataComponents.STORED_MANA, 0);
     }
 
     private static void setStored(ItemStack gun, int mana) {
-        gun.getOrCreateTag().putInt(MANA, mana);
+        gun.set(ModDataComponents.STORED_MANA, mana);
     }
 
     public static boolean pay(ServerPlayer player, ItemStack gun, int cost) {

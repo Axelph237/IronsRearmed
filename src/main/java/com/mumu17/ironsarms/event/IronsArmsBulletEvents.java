@@ -34,7 +34,6 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.projectile.AbstractHurtingProjectile;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -43,16 +42,17 @@ import net.minecraft.world.level.entity.EntityTypeTest;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.event.entity.EntityJoinLevelEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-@Mod.EventBusSubscriber(modid = IronsArms.MODID)
+@EventBusSubscriber(modid = IronsArms.MODID)
 public class IronsArmsBulletEvents {
     private static final Map<UUID, CompoundTag> pendingSpells = new ConcurrentHashMap<>();
     private static Boolean calamityRingExists = null;
@@ -80,7 +80,7 @@ public class IronsArmsBulletEvents {
 
         Skyfall skyfallFor(Player caster) {
             Vec3 top = aim.add(approach);
-            BlockHitResult blocked = caster.level().clip(new ClipContext(aim, top, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, null));
+            BlockHitResult blocked = caster.level().clip(new ClipContext(aim, top, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, CollisionContext.empty()));
             Vec3 start = blocked.getType() == HitResult.Type.MISS ? top
                     : aim.add(approach.normalize().scale(Math.max(0, blocked.getLocation().distanceTo(aim) - 0.5)));
             Vec3 dir = start.equals(aim) ? approach.normalize().reverse() : aim.subtract(start).normalize();
@@ -90,7 +90,7 @@ public class IronsArmsBulletEvents {
 
     private record Skyfall(Player caster, Vec3 aim, Vec3 start, Vec3 dir) {
         boolean isClear(Vec3 from, Vec3 to) {
-            return caster.level().clip(new ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, null)).getType() == HitResult.Type.MISS;
+            return caster.level().clip(new ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, CollisionContext.empty())).getType() == HitResult.Type.MISS;
         }
 
         void placeOnAim(Projectile projectile) {
@@ -102,12 +102,6 @@ public class IronsArmsBulletEvents {
             Vec3 toAim = aim.subtract(centre);
             Vec3 heading = toAim.lengthSqr() < 1.0E-6 ? dir : toAim.normalize();
             projectile.setDeltaMovement(heading.scale(projectile.getDeltaMovement().length()));
-            if (projectile instanceof AbstractHurtingProjectile hurting) {
-                double power = new Vec3(hurting.xPower, hurting.yPower, hurting.zPower).length();
-                hurting.xPower = heading.x * power;
-                hurting.yPower = heading.y * power;
-                hurting.zPower = heading.z * power;
-            }
             projectile.setYRot((float) (Mth.atan2(heading.x, heading.z) * Mth.RAD_TO_DEG));
             projectile.setXRot((float) (Mth.atan2(heading.y, heading.horizontalDistance()) * Mth.RAD_TO_DEG));
             projectile.yRotO = projectile.getYRot();
@@ -171,14 +165,14 @@ public class IronsArmsBulletEvents {
         if (!(event.getShooter() instanceof ServerPlayer player)) return;
 
         ItemStack gunStack = event.getGunItemStack();
-        Optional<GunMana.InscribedSpell> inscribedSpell = GunMana.inscribedSpell(gunStack);
+        Optional<SpellData> inscribedSpell = GunMana.inscribedSpell(gunStack);
 
         AbstractSpell spell = null;
         int level = 1;
 
         if (inscribedSpell.isPresent()) {
-            spell = inscribedSpell.get().spell();
-            level = inscribedSpell.get().level();
+            spell = inscribedSpell.get().getSpell();
+            level = inscribedSpell.get().getLevel();
         } else if (ISpellContainer.isSpellContainer(gunStack)) {
             ISpellContainer container = ISpellContainer.get(gunStack);
             if (!container.isEmpty()) {
@@ -191,7 +185,7 @@ public class IronsArmsBulletEvents {
         if (spell == null || spell == SpellRegistry.none()) return;
 
         ModifySpellLevelEvent levelEvent = new ModifySpellLevelEvent(spell, player, level, level);
-        MinecraftForge.EVENT_BUS.post(levelEvent);
+        NeoForge.EVENT_BUS.post(levelEvent);
         level = levelEvent.getLevel();
 
         if (isOnCooldown(player, spell)) {
@@ -221,7 +215,7 @@ public class IronsArmsBulletEvents {
         if (event.getCastSource() != CastSource.SWORD || !event.getCastSource().consumesMana() || event.getEntity().isCreative()) return;
         ItemStack gun = event.getEntity().getMainHandItem();
         boolean gunCastsThisSpell = GunMana.inscribedSpell(gun)
-                .filter(inscribed -> inscribed.spell().getSpellId().equals(event.getSpellId()))
+                .filter(inscribed -> inscribed.getSpell().getSpellId().equals(event.getSpellId()))
                 .isPresent();
         if (gunCastsThisSpell && GunMana.payFromGun(gun, event.getManaCost())) {
             event.setManaCost(0);
@@ -252,10 +246,8 @@ public class IronsArmsBulletEvents {
     }
 
     @SubscribeEvent
-    public static void onServerTick(TickEvent.ServerTickEvent event) {
-        if (event.phase == TickEvent.Phase.END) {
-            pendingSpells.clear();
-        }
+    public static void onServerTick(ServerTickEvent.Post event) {
+        pendingSpells.clear();
     }
 
     @SubscribeEvent

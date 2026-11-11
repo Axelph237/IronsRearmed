@@ -1,7 +1,7 @@
 package com.mumu17.ironsarms.config;
 
 import net.minecraft.util.Mth;
-import net.minecraftforge.common.ForgeConfigSpec;
+import net.neoforged.neoforge.common.ModConfigSpec;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -9,7 +9,7 @@ import java.util.List;
 public class ManaDrawConfig {
     public record ManaDrawTier(int cap, double efficiency) {}
 
-    private record TierValues(ForgeConfigSpec.IntValue cap, ForgeConfigSpec.DoubleValue efficiency) {}
+    private record TierValues(ModConfigSpec.IntValue cap, ModConfigSpec.DoubleValue efficiency) {}
 
     private static final List<ManaDrawTier> DEFAULTS = List.of(
             new ManaDrawTier(100, 0.6),
@@ -19,10 +19,10 @@ public class ManaDrawConfig {
             new ManaDrawTier(2000, 1.0));
 
     private static final List<TierValues> TIERS;
-    public static final ForgeConfigSpec SPEC;
+    public static final ModConfigSpec SPEC;
 
     static {
-        ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
+        ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
         List<TierValues> tiers = new ArrayList<>();
         builder.comment("Mana Draw enchantment, one section per enchantment level").push("manaDraw");
         for (int i = 0; i < DEFAULTS.size(); i++) {
